@@ -132,5 +132,56 @@ def extract_answers(request):
         # Calculate the total score
 #def show_exam_result(request, course_id, submission_id):
 
+from django.shortcuts import get_object_or_404
+from django.http import HttpResponseRedirect
+from django.urls import reverse
+from .models import Course, Enrollment, Submission, Choice
 
+
+def extractAnswers(request):
+    """Helper function to get selected choice IDs from the form"""
+    submitted_answers = []
+    for key in request.POST:
+        if key.startswith('choice'):
+            value = request.POST[key]
+            submitted_answers.append(int(value))
+    return submitted_answers
+
+
+def submit(request, course_id):
+    """Process exam submission"""
+    course = get_object_or_404(Course, pk=course_id)
+    user = request.user
+    enrollment = Enrollment.objects.get(user=user, course=course)
+    
+    # Create new submission
+    submission = Submission.objects.create(enrollment=enrollment)
+    
+    # Get selected choices
+    choices = extractAnswers(request)
+    submission.choices.set(Choice.objects.filter(id__in=choices))
+    
+    # Redirect to result page
+    return HttpResponseRedirect(reverse('onlinecourse:exam_result', args=(course_id, submission.id)))
+
+
+def show_exam_result(request, course_id, submission_id):
+    """Show exam result and score"""
+    course = get_object_or_404(Course, pk=course_id)
+    submission = get_object_or_404(Submission, pk=submission_id)
+    
+    selected_ids = list(submission.choices.values_list('id', flat=True))
+    total_score = 0
+    
+    for question in course.question_set.all():
+        if question.is_get_score(selected_ids):
+            total_score += question.grade
+    
+    context = {
+        'course': course,
+        'submission': submission,
+        'selected_ids': selected_ids,
+        'score': total_score,
+    }
+    return render(request, 'onlinecourse/exam_result_bootstrap.html', context)
 
